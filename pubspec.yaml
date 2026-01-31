@@ -1,0 +1,23 @@
+name: thread_analysis
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  mobile_scanner: ^3.5.6
+  image_picker: 1.0.7
+  fl_chart: ^0.66.2
+
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
