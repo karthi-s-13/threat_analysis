@@ -6,13 +6,123 @@ import '../../models/app_risk_result.dart';
 class AppRiskDetailScreen extends StatelessWidget {
   final AppRiskResult app;
 
-  const AppRiskDetailScreen({
-    super.key,
-    required this.app,
-  });
+  const AppRiskDetailScreen({super.key, required this.app});
 
-  static const MethodChannel _channel =
-      MethodChannel('app_permission_scanner');
+  List<_Capability> _extractAllCapabilities() {
+    final caps = <String, _Capability>{};
+
+    void add(String key, _Capability cap) {
+      caps.putIfAbsent(key, () => cap);
+    }
+
+    for (final perm in app.permissions) {
+      final p = perm.toUpperCase();
+
+      if (p.contains("CAMERA")) {
+        add(
+          "camera",
+          _Capability(
+            label: "Camera",
+            icon: Icons.camera_alt,
+            color: Colors.redAccent,
+          ),
+        );
+      } else if (p.contains("RECORD_AUDIO")) {
+        add(
+          "microphone",
+          _Capability(
+            label: "Microphone",
+            icon: Icons.mic,
+            color: Colors.redAccent,
+          ),
+        );
+      } else if (p.contains("SMS")) {
+        add(
+          "sms",
+          _Capability(label: "SMS", icon: Icons.sms, color: Colors.redAccent),
+        );
+      } else if (p.contains("LOCATION")) {
+        add(
+          "location",
+          _Capability(
+            label: "Location",
+            icon: Icons.location_on,
+            color: Colors.orangeAccent,
+          ),
+        );
+      } else if (p.contains("READ_CONTACTS")) {
+        add(
+          "contacts",
+          _Capability(
+            label: "Contacts",
+            icon: Icons.contacts,
+            color: Colors.orangeAccent,
+          ),
+        );
+      } else if (p.contains("STORAGE") ||
+          p.contains("READ_EXTERNAL") ||
+          p.contains("WRITE_EXTERNAL")) {
+        add(
+          "storage",
+          _Capability(
+            label: "Storage",
+            icon: Icons.folder,
+            color: Colors.orangeAccent,
+          ),
+        );
+      } else if (p.contains("INTERNET")) {
+        add(
+          "internet",
+          _Capability(
+            label: "Internet",
+            icon: Icons.language,
+            color: Colors.greenAccent,
+          ),
+        );
+      } else if (p.contains("CALL") || p.contains("PHONE")) {
+        add(
+          "phone",
+          _Capability(
+            label: "Phone",
+            icon: Icons.call,
+            color: Colors.redAccent,
+          ),
+        );
+      } else if (p.contains("NOTIFICATION")) {
+        add(
+          "notification",
+          _Capability(
+            label: "Notifications",
+            icon: Icons.notifications,
+            color: Colors.orangeAccent,
+          ),
+        );
+      } else if (p.contains("BLUETOOTH")) {
+        add(
+          "bluetooth",
+          _Capability(
+            label: "Bluetooth",
+            icon: Icons.bluetooth,
+            color: Colors.greenAccent,
+          ),
+        );
+      } else if (p.contains("SYSTEM_ALERT_WINDOW") || p.contains("OVERLAY")) {
+        add(
+          "overlay",
+          _Capability(
+            label: "Overlay",
+            icon: Icons.layers,
+            color: Colors.redAccent,
+          ),
+        );
+      }
+      // ❌ NO ELSE → unknown permissions are ignored
+    }
+
+    return caps.values.toList();
+  }
+
+  static const MethodChannel _channel = MethodChannel('app_permission_scanner');
 
   // =============================
   // RISK COLORS
@@ -35,6 +145,7 @@ class AppRiskDetailScreen extends StatelessWidget {
   Color _permissionColor(String permission) {
     final p = permission.toUpperCase();
 
+    // 🔴 HIGH RISK
     if (p.contains("READ_SMS") ||
         p.contains("SEND_SMS") ||
         p.contains("RECEIVE_SMS") ||
@@ -44,14 +155,17 @@ class AppRiskDetailScreen extends StatelessWidget {
       return Colors.redAccent;
     }
 
+    // 🟠 MEDIUM RISK
     if (p.contains("READ_CONTACTS") ||
         p.contains("ACCESS_FINE_LOCATION") ||
         p.contains("ACCESS_COARSE_LOCATION") ||
-        p.contains("READ_CALL_LOG")) {
+        p.contains("READ_CALL_LOG") ||
+        p.contains("LOCATION")) {
       return Colors.orangeAccent;
     }
 
-    return Colors.greenAccent;
+    // ❌ LOW RISK → DO NOT SHOW (fallback)
+    return Colors.transparent;
   }
 
   IconData _permissionIcon(String permission) {
@@ -97,10 +211,9 @@ class AppRiskDetailScreen extends StatelessWidget {
 
   Future<void> _openAppSettings() async {
     try {
-      await _channel.invokeMethod(
-        'openAppSettings',
-        {"package": app.packageName},
-      );
+      await _channel.invokeMethod('openAppSettings', {
+        "package": app.packageName,
+      });
     } catch (e) {
       debugPrint("Failed to open app settings: $e");
     }
@@ -240,11 +353,7 @@ class AppRiskDetailScreen extends StatelessWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
-                            Icons.shield,
-                            color: riskColor,
-                            size: 16,
-                          ),
+                          Icon(Icons.shield, color: riskColor, size: 16),
                           const SizedBox(width: 8),
                           Text(
                             "${app.level.name.toUpperCase()} RISK • ${app.riskScore}%",
@@ -274,6 +383,78 @@ class AppRiskDetailScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // =============================
+                  // APP CAPABILITIES (ALL PERMISSIONS)
+                  // =============================
+                  Row(
+                    children: [
+                      Container(
+                        width: 4,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.redAccent, Colors.orangeAccent],
+                          ),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Text(
+                        "Capabilities Used",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: _extractAllCapabilities().map((cap) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              cap.color.withOpacity(0.25),
+                              cap.color.withOpacity(0.1),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(color: cap.color.withOpacity(0.5)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(cap.icon, color: cap.color, size: 18),
+                            const SizedBox(width: 8),
+                            Text(
+                              cap.label,
+                              style: TextStyle(
+                                color: cap.color,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+
+                  const SizedBox(height: 32),
+
+                  // =============================
                   // WHY THIS APP IS RISKY
                   // =============================
                   Row(
@@ -285,10 +466,7 @@ class AppRiskDetailScreen extends StatelessWidget {
                           gradient: LinearGradient(
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
-                            colors: [
-                              riskColor,
-                              riskColor.withOpacity(0.5),
-                            ],
+                            colors: [riskColor, riskColor.withOpacity(0.5)],
                           ),
                           borderRadius: BorderRadius.circular(2),
                         ),
@@ -394,6 +572,7 @@ class AppRiskDetailScreen extends StatelessWidget {
 
                   const SizedBox(height: 32),
 
+                  
                   // =============================
                   // PERMISSIONS & RISK LEVEL
                   // =============================
@@ -406,10 +585,7 @@ class AppRiskDetailScreen extends StatelessWidget {
                           gradient: LinearGradient(
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
-                            colors: [
-                              riskColor,
-                              riskColor.withOpacity(0.5),
-                            ],
+                            colors: [riskColor, riskColor.withOpacity(0.5)],
                           ),
                           borderRadius: BorderRadius.circular(2),
                         ),
@@ -433,9 +609,7 @@ class AppRiskDetailScreen extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: riskColor.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: riskColor.withOpacity(0.3),
-                          ),
+                          border: Border.all(color: riskColor.withOpacity(0.3)),
                         ),
                         child: Text(
                           "${app.permissions.length} permissions",
@@ -450,86 +624,92 @@ class AppRiskDetailScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
 
-                  ...app.permissions.map((perm) {
-                    final color = _permissionColor(perm);
-                    final icon = _permissionIcon(perm);
-                    final explanation = _permissionExplanation(perm);
-                    final permName = perm.replaceAll("android.permission.", "");
+                  ...app.permissions
+                      .where((perm) {
+                        final color = _permissionColor(perm);
+                        return color == Colors.redAccent ||
+                            color == Colors.orangeAccent;
+                      })
+                      .map((perm) {
+                        final color = _permissionColor(perm);
+                        final icon = _permissionIcon(perm);
+                        final explanation = _permissionExplanation(perm);
+                        final permName = perm.replaceAll(
+                          "android.permission.",
+                          "",
+                        );
 
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            const Color(0xFF1A1F35),
-                            const Color(0xFF12182B),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: color.withOpacity(0.3),
-                          width: 1.5,
-                        ),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Icon
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [
-                                    color.withOpacity(0.3),
-                                    color.withOpacity(0.15),
-                                  ],
-                                ),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: color.withOpacity(0.4),
-                                ),
-                              ),
-                              child: Icon(
-                                icon,
-                                color: color,
-                                size: 24,
-                              ),
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                const Color(0xFF1A1F35),
+                                const Color(0xFF12182B),
+                              ],
                             ),
-                            const SizedBox(width: 16),
-                            // Content
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    permName,
-                                    style: TextStyle(
-                                      color: color,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: color.withOpacity(0.3),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Icon
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        color.withOpacity(0.3),
+                                        color.withOpacity(0.15),
+                                      ],
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: color.withOpacity(0.4),
                                     ),
                                   ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    explanation,
-                                    style: const TextStyle(
-                                      color: Colors.white60,
-                                      fontSize: 13,
-                                      height: 1.4,
-                                    ),
+                                  child: Icon(icon, color: color, size: 24),
+                                ),
+                                const SizedBox(width: 16),
+                                // Content
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        permName,
+                                        style: TextStyle(
+                                          color: color,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        explanation,
+                                        style: const TextStyle(
+                                          color: Colors.white60,
+                                          fontSize: 13,
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }),
+                          ),
+                        );
+                      }),
 
                   const SizedBox(height: 32),
 
@@ -540,10 +720,7 @@ class AppRiskDetailScreen extends StatelessWidget {
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(16),
                       gradient: LinearGradient(
-                        colors: [
-                          Colors.cyanAccent,
-                          Colors.blueAccent,
-                        ],
+                        colors: [Colors.cyanAccent, Colors.blueAccent],
                       ),
                       boxShadow: [
                         BoxShadow(
@@ -585,4 +762,12 @@ class AppRiskDetailScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+class _Capability {
+  final String label;
+  final IconData icon;
+  final Color color;
+
+  _Capability({required this.label, required this.icon, required this.color});
 }

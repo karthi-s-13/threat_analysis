@@ -4,6 +4,7 @@ import '../../native/app_scanner_channel.dart';
 import '../../logic/app_risk_engine.dart';
 import '../../models/app_risk_result.dart';
 import 'app_risk_result_screen.dart';
+import '../../app_state/app_risk_cache.dart';
 
 class AppRiskLoadingScreen extends StatefulWidget {
   const AppRiskLoadingScreen({super.key});
@@ -22,7 +23,7 @@ class _AppRiskLoadingScreenState extends State<AppRiskLoadingScreen>
   @override
   void initState() {
     super.initState();
-    
+
     // Pulse animation for outer ring
     _pulseController = AnimationController(
       duration: const Duration(milliseconds: 2000),
@@ -39,9 +40,10 @@ class _AppRiskLoadingScreenState extends State<AppRiskLoadingScreen>
       vsync: this,
     )..repeat();
 
-    _rotateAnimation = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _rotateController, curve: Curves.linear),
-    );
+    _rotateAnimation = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _rotateController, curve: Curves.linear));
 
     _scanAndAnalyzeApps();
   }
@@ -54,29 +56,35 @@ class _AppRiskLoadingScreenState extends State<AppRiskLoadingScreen>
   }
 
   Future<void> _scanAndAnalyzeApps() async {
-    try {
-      final rawApps = await AppScannerChannel.scanApps();
-
-      final List<AppRiskResult> results = rawApps
-          .map((app) => evaluateAppRisk(app))
-          .toList();
-
-      // Sort High → Low risk
-      results.sort((a, b) => b.riskScore.compareTo(a.riskScore));
-
-      if (!mounted) return;
-
+    if (AppRiskCache.hasCache) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => AppRiskResultScreen(results: results),
+          builder: (_) =>
+              AppRiskResultScreen(results: AppRiskCache.cachedResults!),
         ),
       );
-    } catch (e) {
-      if (!mounted) return;
-
-      _showPermissionDialog();
+      return;
     }
+
+    final hasPermission = await AppScannerChannel.checkUsagePermission();
+    if (!hasPermission) {
+      _showPermissionDialog();
+      return;
+    }
+
+    final rawApps = await AppScannerChannel.scanApps();
+
+    final results = rawApps.map((app) => evaluateAppRisk(app)).toList()
+      ..sort((a, b) => b.riskScore.compareTo(a.riskScore));
+
+    AppRiskCache.cachedResults = results;
+    AppRiskCache.lastScanTime = DateTime.now();
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => AppRiskResultScreen(results: results)),
+    );
   }
 
   void _showPermissionDialog() {
@@ -124,18 +132,12 @@ class _AppRiskLoadingScreenState extends State<AppRiskLoadingScreen>
           decoration: BoxDecoration(
             color: Colors.redAccent.withOpacity(0.05),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: Colors.redAccent.withOpacity(0.1),
-            ),
+            border: Border.all(color: Colors.redAccent.withOpacity(0.1)),
           ),
           child: const Text(
             "Usage Access permission is required to scan installed apps.\n\n"
             "Please enable Usage Access for this app in system settings.",
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 14,
-              height: 1.5,
-            ),
+            style: TextStyle(color: Colors.white70, fontSize: 14, height: 1.5),
           ),
         ),
         actions: [
@@ -146,21 +148,13 @@ class _AppRiskLoadingScreenState extends State<AppRiskLoadingScreen>
             },
             style: TextButton.styleFrom(
               foregroundColor: Colors.white60,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 12,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             ),
             child: const Text("CANCEL"),
           ),
           Container(
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Colors.redAccent,
-                  Colors.red,
-                ],
-              ),
+              gradient: LinearGradient(colors: [Colors.redAccent, Colors.red]),
               borderRadius: BorderRadius.circular(8),
             ),
             child: TextButton(
@@ -231,7 +225,7 @@ class _AppRiskLoadingScreenState extends State<AppRiskLoadingScreen>
                       );
                     },
                   ),
-                  
+
                   // Rotating scanning ring
                   AnimatedBuilder(
                     animation: _rotateAnimation,
@@ -297,10 +291,7 @@ class _AppRiskLoadingScreenState extends State<AppRiskLoadingScreen>
               // =============================
               ShaderMask(
                 shaderCallback: (bounds) => LinearGradient(
-                  colors: [
-                    Colors.redAccent,
-                    Colors.red,
-                  ],
+                  colors: [Colors.redAccent, Colors.red],
                 ).createShader(bounds),
                 child: const Text(
                   "Scanning installed apps...",
@@ -323,16 +314,11 @@ class _AppRiskLoadingScreenState extends State<AppRiskLoadingScreen>
                 decoration: BoxDecoration(
                   color: Colors.redAccent.withOpacity(0.05),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: Colors.redAccent.withOpacity(0.1),
-                  ),
+                  border: Border.all(color: Colors.redAccent.withOpacity(0.1)),
                 ),
                 child: const Text(
                   "Analyzing permissions & usage",
-                  style: TextStyle(
-                    color: Colors.white60,
-                    fontSize: 13,
-                  ),
+                  style: TextStyle(color: Colors.white60, fontSize: 13),
                 ),
               ),
 
@@ -425,11 +411,7 @@ class _AppRiskLoadingScreenState extends State<AppRiskLoadingScreen>
             ),
           )
         else
-          Icon(
-            Icons.more_horiz,
-            color: Colors.white30,
-            size: 16,
-          ),
+          Icon(Icons.more_horiz, color: Colors.white30, size: 16),
       ],
     );
   }

@@ -4,84 +4,88 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 AppRiskResult evaluateAppRisk(Map<String, dynamic> app) {
-  int score = 0;
+  double score = 0;
   final List<String> reasons = [];
+  final List<String> perms = List<String>.from(app["permissions"] ?? []);
 
-  final List<String> perms =
-      List<String>.from(app["permissions"] ?? []);
+  final bool isSystem = app["is_system"] == true;
 
-  bool hasCamera = perms.contains("android.permission.CAMERA");
-  bool hasMic = perms.contains("android.permission.RECORD_AUDIO");
-  bool hasSms = perms.any((p) => p.contains("SMS"));
-  bool hasContacts =
-      perms.contains("android.permission.READ_CONTACTS");
-  bool hasInternet =
-      perms.contains("android.permission.INTERNET");
-  bool hasOverlay =
+  // 1. Permission flags
+  final bool hasInternet = perms.contains("android.permission.INTERNET");
+  final bool hasCamera = perms.contains("android.permission.CAMERA");
+  final bool hasMic = perms.contains("android.permission.RECORD_AUDIO");
+  final bool hasSms = perms.any((p) => p.contains("SMS"));
+  final bool hasContacts = perms.contains("android.permission.READ_CONTACTS");
+  final bool hasLocation = perms.any((p) => p.contains("LOCATION"));
+  final bool hasOverlay =
       perms.contains("android.permission.SYSTEM_ALERT_WINDOW");
 
-  final int lastUsed = app["last_used"] ?? 0;
-  final bool rarelyUsed =
-      DateTime.now().millisecondsSinceEpoch - lastUsed >
-          1000 * 60 * 60 * 24 * 7; // 7 days
-
-  // ============================
-  // DECISION TREE RULES
-  // ============================
-
-  if (hasCamera && hasMic && hasInternet) {
-    score += 30;
-    reasons.add("Uses camera, microphone, and internet");
+  // 2. High-risk combinations (USER apps only)
+  if (!isSystem && hasInternet) {
+    if (hasSms) {
+      score += 40;
+      reasons.add(
+          "Critical: Can read SMS and transmit data (Potential 2FA interception)");
+    }
+    if (hasCamera || hasMic) {
+      score += 30;
+      reasons.add("High: Media capture with internet access");
+    }
+    if (hasContacts) {
+      score += 15;
+      reasons.add("Medium: Contact list exfiltration risk");
+    }
+    if (hasLocation) {
+      score += 15;
+      reasons.add("Medium: Real-time tracking capabilities");
+    }
   }
 
-  if (hasSms && hasInternet) {
-    score += 25;
-    reasons.add("Can access SMS and internet");
-  }
-
-  if (hasContacts && hasInternet) {
-    score += 15;
-    reasons.add("Can access contacts and internet");
-  }
-
+  // 3. Overlay is dangerous even for system apps
   if (hasOverlay) {
-    score += 20;
-    reasons.add("Can draw over other apps (overlay)");
+    score += 25;
+    reasons.add("High: Overlay permission can be used for phishing/tapjacking");
   }
 
-  if (rarelyUsed && (hasCamera || hasMic || hasSms)) {
-    score += 10;
-    reasons.add("Sensitive permissions with rare usage");
+  // 4. Dormancy (ONLY if lastUsed is known)
+  final int lastUsed = app["last_used"] ?? 0;
+  final int sevenDaysMs = 1000 * 60 * 60 * 24 * 7;
+
+  final bool isDormant =
+      lastUsed > 0 &&
+      DateTime.now().millisecondsSinceEpoch - lastUsed > sevenDaysMs;
+
+  if (isDormant && perms.isNotEmpty && !isSystem) {
+    score *= 1.1;
+    reasons.add("Security Note: App is dormant but retains sensitive access");
   }
 
-  // ============================
-  // CLAMP SCORE
-  // ============================
-  if (score > 100) score = 100;
+  // 5. System app score cap
+  if (isSystem && score > 30) {
+    score = 30;
+    reasons.add("System app: elevated permissions are expected");
+  }
 
-  // ============================
-  // CLASSIFICATION
-  // ============================
+  // 6. Normalize
+  int finalScore = score.round().clamp(0, 100);
+
+  // 7. Classification
   AppRiskLevel level;
-  if (score >= 70) {
+  if (finalScore >= 75) {
     level = AppRiskLevel.high;
-  } else if (score >= 40) {
+  } else if (finalScore >= 35) {
     level = AppRiskLevel.medium;
   } else {
     level = AppRiskLevel.low;
   }
 
-  final String? iconBase64 = app["icon"];
-
   return AppRiskResult(
     appName: app["app_name"] ?? "Unknown",
     packageName: app["package_name"] ?? "",
-    riskScore: score,
+    riskScore: finalScore,
     level: level,
     reasons: reasons,
     permissions: perms,
-    icon: iconBase64 != null
-    ? base64Decode(iconBase64)
-    : null,
+    icon: app["icon"] != null ? base64Decode(app["icon"]) : null,
   );
 }

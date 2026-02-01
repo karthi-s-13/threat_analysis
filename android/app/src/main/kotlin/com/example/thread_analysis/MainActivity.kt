@@ -1,23 +1,15 @@
 package com.example.thread_analysis
 
-import android.app.usage.UsageStats
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.provider.Settings
-import android.util.Base64
-
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
-import java.io.ByteArrayOutputStream
+import java.util.*
 
 class MainActivity : FlutterActivity() {
 
@@ -31,35 +23,51 @@ class MainActivity : FlutterActivity() {
                 result ->
             when (call.method) {
 
-                // =============================
-                // SCAN APPS
-                // =============================
-                "scanApps" -> {
-                    if (!hasUsageAccess()) {
-                        openUsageSettings()
-                        result.error(
-                                "USAGE_ACCESS_REQUIRED",
-                                "Usage access permission not granted",
-                                null
-                        )
-                    } else {
-                        result.success(scanAppsUsingUsageStats())
-                    }
+                // =========================
+                // CHECK USAGE PERMISSION
+                // =========================
+                "checkUsagePermission" -> {
+                    val usageStatsManager =
+                            getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+
+                    val now = System.currentTimeMillis()
+                    val stats =
+                            usageStatsManager.queryUsageStats(
+                                    UsageStatsManager.INTERVAL_DAILY,
+                                    now - 1000 * 60 * 60,
+                                    now
+                            )
+
+                    result.success(stats.isNotEmpty())
                 }
 
-                // =============================
+                // =========================
+                // OPEN USAGE SETTINGS
+                // =========================
+                "openUsageSettings" -> {
+                    startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                    result.success(null)
+                }
+
+                // =========================
                 // OPEN APP SETTINGS
-                // =============================
+                // =========================
                 "openAppSettings" -> {
                     val pkg = call.argument<String>("package")
-                    if (pkg != null) {
-                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                        intent.data = Uri.parse("package:$pkg")
-                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        startActivity(intent)
-                        result.success(null)
-                    } else {
-                        result.error("INVALID_PACKAGE", "Package name missing", null)
+                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    intent.data = Uri.parse("package:$pkg")
+                    startActivity(intent)
+                    result.success(null)
+                }
+
+                // =========================
+                // REAL APP SCAN
+                // =========================
+                "scanApps" -> {
+                    try {
+                        result.success(scanInstalledApps())
+                    } catch (e: Exception) {
+                        result.error("SCAN_FAILED", e.message, null)
                     }
                 }
                 else -> result.notImplemented()
@@ -67,103 +75,56 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    // =============================
-    // CHECK USAGE ACCESS
-    // =============================
-    private fun hasUsageAccess(): Boolean {
-        val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+    // =========================
+    // CORE SCAN LOGIC
+    // =========================
+    private fun scanInstalledApps(): List<Map<String, Any>> {
 
-        val now = System.currentTimeMillis()
-        val stats: List<UsageStats> =
-                usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, now - 1000 * 60, now)
-
-        return stats.isNotEmpty()
-    }
-
-    // =============================
-    // OPEN USAGE SETTINGS
-    // =============================
-    private fun openUsageSettings() {
-        val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        startActivity(intent)
-    }
-
-    // =============================
-    // SCAN APPS + PERMISSIONS
-    // =============================
-    private fun scanAppsUsingUsageStats(): List<Map<String, Any>> {
-        val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val pm = packageManager
+        val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
 
         val now = System.currentTimeMillis()
-        val stats =
-                usm.queryUsageStats(
+
+        val usageStats =
+                usageStatsManager.queryUsageStats(
                         UsageStatsManager.INTERVAL_DAILY,
-                        now - 1000 * 60 * 60 * 24,
+                        now - 1000L * 60 * 60 * 24 * 7,
                         now
                 )
 
-        val appList = mutableListOf<Map<String, Any>>()
+        val usageMap = usageStats.associateBy { it.packageName }
 
-        for (stat in stats) {
-            try {
-                val pkgInfo = pm.getPackageInfo(stat.packageName, PackageManager.GET_PERMISSIONS)
+        val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+        val results = mutableListOf<Map<String, Any>>()
 
-                val appInfo = pkgInfo.applicationInfo ?: continue
+        println("TOTAL INSTALLED APPS = ${apps.size}")
 
-                // 🚫 SKIP SYSTEM APPS
-                val isSystemApp =
-                        (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||
-                                (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+        for (app in apps) {
 
-                if (isSystemApp) continue
+            val packageName = app.packageName
+            val appName = pm.getApplicationLabel(app).toString()
 
-                val appName = pm.getApplicationLabel(appInfo).toString()
+            val packageInfo = pm.getPackageInfo(packageName, PackageManager.GET_PERMISSIONS)
 
-                val iconDrawable = appInfo.loadIcon(pm)
-                val iconBase64 = drawableToBase64(iconDrawable)
+            val permissions = packageInfo.requestedPermissions?.toList() ?: emptyList()
 
-                val permissions = pkgInfo.requestedPermissions?.toList() ?: emptyList()
+            val lastUsed = usageMap[packageName]?.lastTimeUsed ?: 0L
 
-                appList.add(
-                        mapOf(
-                                "app_name" to appName,
-                                "package_name" to stat.packageName,
-                                "permissions" to permissions,
-                                "last_used" to stat.lastTimeUsed,
-                                "icon" to iconBase64
-                        )
-                )
-            } catch (e: Exception) {
-                // Ignore safely
-            }
+            println("APP → $appName | perms=${permissions.size} | lastUsed=$lastUsed")
+
+            results.add(
+                    mapOf(
+                            "app_name" to appName,
+                            "package_name" to packageName,
+                            "permissions" to permissions,
+                            "last_used" to lastUsed,
+                            "is_system" to false // temporary
+                    )
+            )
         }
 
-        return appList
-    }
+        println("FINAL APP COUNT SENT TO FLUTTER = ${results.size}")
 
-    private fun drawableToBase64(drawable: android.graphics.drawable.Drawable): String {
-        val bitmap =
-                if (drawable is BitmapDrawable) {
-                    drawable.bitmap
-                } else {
-                    val bitmap =
-                            Bitmap.createBitmap(
-                                    drawable.intrinsicWidth,
-                                    drawable.intrinsicHeight,
-                                    Bitmap.Config.ARGB_8888
-                            )
-                    val canvas = Canvas(bitmap)
-                    drawable.setBounds(0, 0, canvas.width, canvas.height)
-                    drawable.draw(canvas)
-                    bitmap
-                }
-
-        val stream = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
-        val bytes = stream.toByteArray()
-
-        return Base64.encodeToString(bytes, Base64.NO_WRAP)
+        return results
     }
 }

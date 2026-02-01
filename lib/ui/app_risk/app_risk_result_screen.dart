@@ -2,14 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../../models/app_risk_result.dart';
 import 'app_risk_detail_screen.dart';
+import 'app_risk_loading_screen.dart';
+
+import '../../app_state/app_risk_cache.dart';
 
 class AppRiskResultScreen extends StatelessWidget {
   final List<AppRiskResult> results;
 
-  const AppRiskResultScreen({
-    super.key,
-    required this.results,
-  });
+  const AppRiskResultScreen({super.key, required this.results});
 
   Color _riskColor(AppRiskLevel level) {
     switch (level) {
@@ -37,12 +37,15 @@ class AppRiskResultScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final int highCount =
-        results.where((e) => e.level == AppRiskLevel.high).length;
-    final int mediumCount =
-        results.where((e) => e.level == AppRiskLevel.medium).length;
-    final int lowCount =
-        results.where((e) => e.level == AppRiskLevel.low).length;
+    final int highCount = results
+        .where((e) => e.level == AppRiskLevel.high)
+        .length;
+    final int mediumCount = results
+        .where((e) => e.level == AppRiskLevel.medium)
+        .length;
+    final int lowCount = results
+        .where((e) => e.level == AppRiskLevel.low)
+        .length;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0B0F1A),
@@ -61,6 +64,28 @@ class AppRiskResultScreen extends StatelessWidget {
               icon: const Icon(Icons.arrow_back, color: Colors.cyanAccent),
               onPressed: () => Navigator.pop(context),
             ),
+
+            // ✅ ADD THIS BLOCK
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.refresh, color: Colors.cyanAccent),
+                tooltip: "Rescan apps",
+                onPressed: () {
+                  // clear cache
+                  AppRiskCache.cachedResults = null;
+                  AppRiskCache.lastScanTime = null;
+
+                  // go back to loading screen
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const AppRiskLoadingScreen(),
+                    ),
+                  );
+                },
+              ),
+            ],
+
             flexibleSpace: FlexibleSpaceBar(
               centerTitle: true,
               title: const Text(
@@ -129,10 +154,7 @@ class AppRiskResultScreen extends StatelessWidget {
                           gradient: LinearGradient(
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.cyanAccent,
-                              Colors.blueAccent,
-                            ],
+                            colors: [Colors.cyanAccent, Colors.blueAccent],
                           ),
                           borderRadius: BorderRadius.circular(2),
                         ),
@@ -149,7 +171,7 @@ class AppRiskResultScreen extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  
+
                   // Risk Stats Cards
                   Row(
                     children: [
@@ -196,10 +218,7 @@ class AppRiskResultScreen extends StatelessWidget {
                           gradient: LinearGradient(
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.cyanAccent,
-                              Colors.blueAccent,
-                            ],
+                            colors: [Colors.cyanAccent, Colors.blueAccent],
                           ),
                           borderRadius: BorderRadius.circular(2),
                         ),
@@ -250,191 +269,192 @@ class AppRiskResultScreen extends StatelessWidget {
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final app = results[index];
-                  final riskColor = _riskColor(app.level);
+              delegate: SliverChildBuilderDelegate((context, index) {
+                final app = results[index];
+                final riskColor = _riskColor(app.level);
 
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          const Color(0xFF1A1F35),
-                          const Color(0xFF12182B),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: riskColor.withOpacity(0.3),
-                        width: 1.5,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: riskColor.withOpacity(0.1),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        const Color(0xFF1A1F35),
+                        const Color(0xFF12182B),
                       ],
                     ),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(16),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => AppRiskDetailScreen(app: app),
-                            ),
-                          );
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Row(
-                            children: [
-                              // App Icon
-                              Container(
-                                width: 56,
-                                height: 56,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: riskColor.withOpacity(0.3),
-                                    width: 2,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: riskColor.withOpacity(0.2),
-                                      blurRadius: 8,
-                                      spreadRadius: 1,
-                                    ),
-                                  ],
-                                ),
-                                child: app.icon != null
-                                    ? CircleAvatar(
-                                        backgroundImage: MemoryImage(app.icon!),
-                                        backgroundColor: Colors.transparent,
-                                        radius: 26,
-                                      )
-                                    : CircleAvatar(
-                                        backgroundColor: riskColor.withOpacity(0.2),
-                                        radius: 26,
-                                        child: Icon(
-                                          Icons.apps,
-                                          color: riskColor,
-                                          size: 28,
-                                        ),
-                                      ),
-                              ),
-                              const SizedBox(width: 16),
-
-                              // App Info
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      app.appName,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: riskColor.withOpacity(0.15),
-                                            borderRadius: BorderRadius.circular(6),
-                                            border: Border.all(
-                                              color: riskColor.withOpacity(0.3),
-                                            ),
-                                          ),
-                                          child: Text(
-                                            _riskLabel(app.level),
-                                            style: TextStyle(
-                                              color: riskColor,
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
-                                              letterSpacing: 0.5,
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.white.withOpacity(0.05),
-                                            borderRadius: BorderRadius.circular(6),
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              Icon(
-                                                Icons.pie_chart,
-                                                size: 12,
-                                                color: riskColor,
-                                              ),
-                                              const SizedBox(width: 4),
-                                              Text(
-                                                "${app.riskScore}%",
-                                                style: TextStyle(
-                                                  color: riskColor,
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-
-                              // Chevron
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: riskColor.withOpacity(0.1),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  Icons.chevron_right,
-                                  color: riskColor,
-                                  size: 20,
-                                ),
-                              ),
-                            ],
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: riskColor.withOpacity(0.3),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: riskColor.withOpacity(0.1),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => AppRiskDetailScreen(app: app),
                           ),
+                        );
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          children: [
+                            // App Icon
+                            Container(
+                              width: 56,
+                              height: 56,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: riskColor.withOpacity(0.3),
+                                  width: 2,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: riskColor.withOpacity(0.2),
+                                    blurRadius: 8,
+                                    spreadRadius: 1,
+                                  ),
+                                ],
+                              ),
+                              child: app.icon != null
+                                  ? CircleAvatar(
+                                      backgroundImage: MemoryImage(app.icon!),
+                                      backgroundColor: Colors.transparent,
+                                      radius: 26,
+                                    )
+                                  : CircleAvatar(
+                                      backgroundColor: riskColor.withOpacity(
+                                        0.2,
+                                      ),
+                                      radius: 26,
+                                      child: Icon(
+                                        Icons.apps,
+                                        color: riskColor,
+                                        size: 28,
+                                      ),
+                                    ),
+                            ),
+                            const SizedBox(width: 16),
+
+                            // App Info
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    app.appName,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: riskColor.withOpacity(0.15),
+                                          borderRadius: BorderRadius.circular(
+                                            6,
+                                          ),
+                                          border: Border.all(
+                                            color: riskColor.withOpacity(0.3),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          _riskLabel(app.level),
+                                          style: TextStyle(
+                                            color: riskColor,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.05),
+                                          borderRadius: BorderRadius.circular(
+                                            6,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              Icons.pie_chart,
+                                              size: 12,
+                                              color: riskColor,
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              "${app.riskScore}%",
+                                              style: TextStyle(
+                                                color: riskColor,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            // Chevron
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: riskColor.withOpacity(0.1),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.chevron_right,
+                                color: riskColor,
+                                size: 20,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                  );
-                },
-                childCount: results.length,
-              ),
+                  ),
+                );
+              }, childCount: results.length),
             ),
           ),
 
           // Bottom padding
-          const SliverToBoxAdapter(
-            child: SizedBox(height: 20),
-          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 20)),
         ],
       ),
     );
@@ -452,16 +472,10 @@ class AppRiskResultScreen extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            color.withOpacity(0.15),
-            color.withOpacity(0.05),
-          ],
+          colors: [color.withOpacity(0.15), color.withOpacity(0.05)],
         ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: color.withOpacity(0.3),
-          width: 1.5,
-        ),
+        border: Border.all(color: color.withOpacity(0.3), width: 1.5),
       ),
       child: Column(
         children: [
@@ -471,11 +485,7 @@ class AppRiskResultScreen extends StatelessWidget {
               color: color.withOpacity(0.2),
               shape: BoxShape.circle,
             ),
-            child: Icon(
-              icon,
-              color: color,
-              size: 24,
-            ),
+            child: Icon(icon, color: color, size: 24),
           ),
           const SizedBox(height: 12),
           Text(
